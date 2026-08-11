@@ -1,0 +1,55 @@
+######################################################################
+
+curl -fsSL https://install.opensre.com | bash
+
+######################################################################
+
+docker run -d \
+  --name ollama \
+  --restart unless-stopped \
+  -p 11434:11434 \
+  -v ollama:/root/.ollama \
+  ollama/ollama
+
+############################################################
+
+docker exec -it ollama ollama pull qwen3:8b
+
+###########################################################
+
+
+docker exec -it ollama ollama list
+
+################################################################
+
+curl http://localhost:11434/api/tags
+
+export LLM_PROVIDER=ollama
+export OLLAMA_HOST=http://localhost:11434
+export OLLAMA_MODEL=qwen3:8b
+################################################################
+
+cat >> ~/.bashrc <<'EOF'
+
+export LLM_PROVIDER=ollama
+export OLLAMA_HOST=http://localhost:11434
+export OLLAMA_MODEL=qwen3:8b
+
+EOF
+
+################################################################
+
+source ~/.bashrc
+
+################################################################
+
+opensre onboard
+
+opensre
+
+################################################################
+
+
+
+
+  
