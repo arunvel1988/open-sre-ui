@@ -13,7 +13,7 @@ docker run -d \
 
 ############################################################
 
-docker exec -it ollama ollama pull qwen3:8b
+docker exec -it ollama ollama pull qwen3:1.7b
 
 ###########################################################
 
