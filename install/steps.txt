@@ -2,6 +2,9 @@
 
 curl -fsSL https://install.opensre.com | bash
 
+
+export PATH="$HOME/.local/bin:$PATH"
+
 ######################################################################
 
 docker run -d \
@@ -38,7 +41,7 @@ export OLLAMA_MODEL=qwen3:8b
 EOF
 
 ################################################################
-
+export PATH="$HOME/.local/bin:$PATH"
 source ~/.bashrc
 
 ################################################################
