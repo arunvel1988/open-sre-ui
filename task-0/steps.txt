@@ -1,3 +1,4 @@
+#################################################################
 sudo apt update -y
 sudo apt install nano lsof git -y
 sudo apt install docker.io -y
@@ -30,6 +31,20 @@ docker run -d \
     "stream": false
   }'
 
+############################################################################################
 
+
+# Node.js/npx — needed for the filesystem MCP server
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# uv/uvx — needed for the fetch MCP server
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.local/bin/env   # or just open a new terminal
+
+# verify both are on PATH
+node -v && npx -v && uvx --version
+
+###################################################################
 
   
