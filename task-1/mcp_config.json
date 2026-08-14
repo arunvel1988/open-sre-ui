@@ -1,0 +1,27 @@
+
+{
+  "_comment": "Each key is a server name you choose. 'transport' is stdio, sse, or streamable_http. Delete/edit entries \u2014 these are just examples.",
+  "filesystem": {
+    "transport": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-filesystem",
+      "/home/sairampep1/a-gent/workspace"
+    ]
+  },
+
+  "docker": {
+    "transport": "stdio",
+    "command": "python3",
+    "args": [
+      "/home/sairampep1/a-gent/docker_mcp_server.py"
+    ],
+    "_note": "Edit the path above to wherever docker_mcp_server.py actually lives on your machine, e.g. /home/sairampep1/a-gent/docker_mcp_server.py"
+  },
+  "_example_remote_server": {
+    "transport": "streamable_http",
+    "url": "http://localhost:8000/mcp",
+    "_note": "For a remote/custom MCP server you're running yourself, e.g. via FastMCP"
+  }
+}
