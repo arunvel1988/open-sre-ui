@@ -1,0 +1,14 @@
+cat requirements.txt 
+flask>=3.0.0
+langchain-core>=0.3.0
+langchain-ollama>=0.2.0
+langgraph>=0.2.0
+langchain-mcp-adapters>=0.1.0
+python-dotenv>=1.0.0
+docker>=7.0.0
+mcp>=1.0.0
+ 
+# Observability (pick what you use — both are optional at runtime)
+langsmith>=0.1.0
+langfuse>=2.0.0
+ 
