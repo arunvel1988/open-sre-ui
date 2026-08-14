@@ -1,0 +1,1037 @@
+STEP 1  Ubuntu + Docker             ← YOU ARE HERE
+STEP 2  Ollama + Qwen3
+STEP 3  Demo application
+STEP 4  Prometheus
+STEP 5  Loki
+STEP 6  Tempo
+STEP 7  Grafana
+STEP 8  Generate metrics/logs/traces
+STEP 9  Create an incident
+STEP 10 Prometheus alert
+STEP 11 OpenSRE alert ingestion
+STEP 12 AI investigation
+STEP 13 Docker remediation tool
+STEP 14 Human-in-the-loop approval
+STEP 15 Automatic recovery verification
+##############################################################################
+
+docker volume create ollama-data
+
+docker run -d \
+  --name ollama \
+  -p 11434:11434 \
+  -v ollama-data:/root/.ollama \
+  --restart unless-stopped \
+  ollama/ollama
+
+docker ps
+
+
+docker exec -it ollama ollama pull qwen3:1.7b
+
+curl -s http://localhost:11434/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3:1.7b",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Explain Kubernetes in one sentence."
+      }
+    ],
+    "think": false,
+    "stream": false
+  }'
+
+
+########################################################
+
+cd ~/ai-sre-agent
+source .venv/bin/activate
+
+
+pip install -U langchain-core langchain langchain-ollama langgraph flask
+
+
+mkdir -p templates
+nano app.py
+
+
+from flask import Flask, render_template, request, jsonify
+from langchain_core.messages import HumanMessage
+from langchain_ollama import ChatOllama
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from typing import Annotated, TypedDict
+
+app = Flask(__name__)
+
+# -----------------------------
+# Ollama / Qwen3
+# -----------------------------
+
+llm = ChatOllama(
+    model="qwen3:1.7b",
+    base_url="http://localhost:11434",
+    temperature=0,
+)
+
+
+# -----------------------------
+# LangGraph state
+# -----------------------------
+
+class AgentState(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+def agent(state: AgentState):
+
+    response = llm.invoke(state["messages"])
+
+    return {
+        "messages": [response]
+    }
+
+
+# -----------------------------
+# Build graph
+# -----------------------------
+
+graph = StateGraph(AgentState)
+
+graph.add_node("agent", agent)
+
+graph.add_edge(START, "agent")
+graph.add_edge("agent", END)
+
+agent_graph = graph.compile()
+
+
+# -----------------------------
+# Conversation memory
+# -----------------------------
+
+conversation = []
+
+
+# -----------------------------
+# Routes
+# -----------------------------
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+@app.route("/chat", methods=["POST"])
+def chat():
+
+    global conversation
+
+    data = request.get_json()
+
+    message = data.get("message", "").strip()
+
+    if not message:
+        return jsonify({
+            "error": "Message is empty"
+        }), 400
+
+    conversation.append(
+        HumanMessage(content=message)
+    )
+
+    result = agent_graph.invoke({
+        "messages": conversation
+    })
+
+    conversation = result["messages"]
+
+    response = conversation[-1].content
+
+    return jsonify({
+        "response": response
+    })
+
+
+@app.route("/clear", methods=["POST"])
+def clear():
+
+    global conversation
+
+    conversation = []
+
+    return jsonify({
+        "status": "cleared"
+    })
+
+
+if __name__ == "__main__":
+
+    app.run(
+        host="0.0.0.0",
+        port=5001,
+        debug=True
+    )
+######################################################################
+
+nano templates/index.html
+
+
+<!DOCTYPE html>
+<html>
+<head>
+
+    <title>AI-SRE Assistant</title>
+
+    <style>
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            padding: 18px 25px;
+            border-bottom: 1px solid #30363d;
+            background: #161b22;
+        }
+
+        .header h2 {
+            margin: 0;
+        }
+
+        .header span {
+            color: #8b949e;
+            font-size: 13px;
+        }
+
+        #chat {
+            flex: 1;
+            overflow-y: auto;
+            padding: 25px;
+        }
+
+        .message {
+            max-width: 850px;
+            margin-bottom: 20px;
+            padding: 15px 18px;
+            border-radius: 8px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+
+        .user {
+            margin-left: auto;
+            background: #1f6feb;
+        }
+
+        .assistant {
+            margin-right: auto;
+            background: #161b22;
+            border: 1px solid #30363d;
+        }
+
+        .input-area {
+            padding: 15px;
+            border-top: 1px solid #30363d;
+            background: #161b22;
+            display: flex;
+            gap: 10px;
+        }
+
+        #message {
+            flex: 1;
+            padding: 14px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            color: white;
+            border-radius: 6px;
+            outline: none;
+        }
+
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background: #238636;
+            color: white;
+        }
+
+        button:hover {
+            background: #2ea043;
+        }
+
+        .clear {
+            background: #30363d;
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+<div class="header">
+
+    <h2>AI-SRE Assistant</h2>
+
+    <span>
+        LangGraph + Qwen3 + Ollama
+    </span>
+
+</div>
+
+
+<div id="chat">
+
+    <div class="message assistant">
+        Hello. I'm your AI-SRE assistant.
+        Ask me anything about your environment.
+    </div>
+
+</div>
+
+
+<div class="input-area">
+
+    <input
+        id="message"
+        placeholder="Ask the AI-SRE agent..."
+        autocomplete="off"
+    >
+
+    <button onclick="sendMessage()">
+        Send
+    </button>
+
+    <button
+        class="clear"
+        onclick="clearChat()">
+        Clear
+    </button>
+
+</div>
+
+
+<script>
+
+async function sendMessage() {
+
+    const input = document.getElementById("message");
+
+    const message = input.value.trim();
+
+    if (!message) {
+        return;
+    }
+
+    addMessage(message, "user");
+
+    input.value = "";
+
+    addMessage("Thinking...", "assistant");
+
+    try {
+
+        const response = await fetch("/chat", {
+
+            method: "POST",
+
+            headers: {
+                "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify({
+                message: message
+            })
+
+        });
+
+        const data = await response.json();
+
+        const chat = document.getElementById("chat");
+
+        chat.lastElementChild.remove();
+
+        addMessage(
+            data.response || data.error,
+            "assistant"
+        );
+
+    } catch (error) {
+
+        const chat = document.getElementById("chat");
+
+        chat.lastElementChild.remove();
+
+        addMessage(
+            "Error connecting to AI agent: " + error,
+            "assistant"
+        );
+
+    }
+
+}
+
+
+function addMessage(text, type) {
+
+    const chat = document.getElementById("chat");
+
+    const div = document.createElement("div");
+
+    div.className = "message " + type;
+
+    div.textContent = text;
+
+    chat.appendChild(div);
+
+    chat.scrollTop = chat.scrollHeight;
+
+}
+
+
+async function clearChat() {
+
+    await fetch("/clear", {
+        method: "POST"
+    });
+
+    document.getElementById("chat").innerHTML = "";
+
+}
+
+document
+    .getElementById("message")
+    .addEventListener("keydown", function(event) {
+
+        if (event.key === "Enter") {
+
+            sendMessage();
+
+        }
+
+    });
+
+</script>
+
+</body>
+</html>
+#########################################################################################
+
+
+pip install requests
+
+nano sre-ai-app.py (with proemetheus tool)
+
+
+from typing import Annotated, TypedDict
+import requests
+
+from flask import Flask, render_template, request, jsonify
+
+from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.tools import tool
+from langchain_ollama import ChatOllama
+
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+
+
+# ============================================================
+# FLASK
+# ============================================================
+
+app = Flask(__name__)
+
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+PROMETHEUS_URL = "http://localhost:9090"
+OLLAMA_URL = "http://localhost:11434"
+OLLAMA_MODEL = "qwen3:1.7b"
+
+
+# ============================================================
+# SYSTEM PROMPT
+# ============================================================
+
+SYSTEM_PROMPT = """
+You are an AI-SRE assistant operating against a real
+observability environment.
+
+Your job is to investigate application and infrastructure
+health using real monitoring data.
+
+You currently have access to Prometheus tools.
+
+IMPORTANT RULES:
+
+1. NEVER invent metric names.
+
+2. NEVER invent job names.
+
+3. NEVER invent label names.
+
+4. NEVER invent application names.
+
+5. NEVER claim that you checked logs or traces because
+   Loki and Tempo tools are not available yet.
+
+6. Use the available tools to obtain real data before
+   making conclusions.
+
+7. If the user asks whether monitoring targets are healthy,
+   use the Prometheus target tool.
+
+8. For a basic Prometheus availability check, the PromQL
+   query is:
+
+   up
+
+9. If you need to investigate an unknown metric, first use
+   the metric discovery tool instead of guessing a metric.
+
+10. If you need to understand which targets are being
+    monitored, use the target discovery tool.
+
+11. If the user asks about a specific metric and you don't
+    know its exact name, discover the available metrics first.
+
+12. PromQL is passed to the Prometheus tool as a normal
+    string. The HTTP client automatically handles URL
+    encoding. Do not tell the user that URL encoding is
+    a problem.
+
+13. Use only information returned by the tools.
+
+14. If a tool returns no data, say that no data was returned.
+
+15. Do not fabricate monitoring results.
+
+16. When investigating an issue, explain:
+    - what you checked
+    - what the data shows
+    - whether anything appears abnormal
+    - what should be investigated next
+
+17. Be concise but useful.
+
+You are an SRE investigation agent, not a generic chatbot.
+"""
+
+
+# ============================================================
+# PROMETHEUS HELPER
+# ============================================================
+
+def prometheus_get(path, params=None):
+
+    response = requests.get(
+        f"{PROMETHEUS_URL}{path}",
+        params=params,
+        timeout=10,
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    if data.get("status") != "success":
+        raise RuntimeError(
+            f"Prometheus returned an unsuccessful response: {data}"
+        )
+
+    return data
+
+
+# ============================================================
+# TOOL 1
+# GENERAL PROMQL QUERY
+# ============================================================
+
+@tool
+def query_prometheus(query: str) -> str:
+    """
+    Execute a PromQL query against Prometheus.
+
+    Use this for investigating real metrics such as:
+    availability, CPU, memory, request rate, errors,
+    latency, and other application or infrastructure metrics.
+
+    Do not invent metric names. If the metric is unknown,
+    use list_prometheus_metrics first.
+    """
+
+    try:
+
+        data = prometheus_get(
+            "/api/v1/query",
+            {
+                "query": query
+            }
+        )
+
+        results = data["data"]["result"]
+
+        if not results:
+
+            return (
+                f"No results returned by Prometheus "
+                f"for query: {query}"
+            )
+
+        return (
+            f"PromQL: {query}\n\n"
+            f"Results:\n{results}"
+        )
+
+    except requests.exceptions.RequestException as e:
+
+        return (
+            "Prometheus connection error: "
+            f"{str(e)}"
+        )
+
+    except Exception as e:
+
+        return (
+            "Prometheus query error: "
+            f"{str(e)}"
+        )
+
+
+# ============================================================
+# TOOL 2
+# LIST METRICS
+# ============================================================
+
+@tool
+def list_prometheus_metrics() -> str:
+    """
+    Discover metric names currently known by Prometheus.
+
+    Use this when you need to discover available metrics
+    instead of guessing metric names.
+    """
+
+    try:
+
+        data = prometheus_get(
+            "/api/v1/label/__name__/values"
+        )
+
+        metrics = data["data"]
+
+        if not metrics:
+
+            return "Prometheus returned no metric names."
+
+        # Prevent sending an enormous response to the LLM.
+        metrics = sorted(metrics)
+
+        max_metrics = 300
+
+        if len(metrics) > max_metrics:
+
+            displayed = metrics[:max_metrics]
+
+            return (
+                f"Prometheus knows about {len(metrics)} metrics.\n\n"
+                f"First {max_metrics} metrics:\n"
+                + "\n".join(displayed)
+                + "\n\n"
+                "Use an appropriate metric name with "
+                "query_prometheus."
+            )
+
+        return (
+            f"Prometheus knows about {len(metrics)} metrics:\n\n"
+            + "\n".join(metrics)
+        )
+
+    except requests.exceptions.RequestException as e:
+
+        return (
+            "Prometheus connection error while "
+            f"discovering metrics: {str(e)}"
+        )
+
+    except Exception as e:
+
+        return (
+            "Prometheus metric discovery error: "
+            f"{str(e)}"
+        )
+
+
+# ============================================================
+# TOOL 3
+# MONITORING TARGETS
+# ============================================================
+
+@tool
+def list_prometheus_targets() -> str:
+    """
+    List Prometheus monitoring targets and their health.
+
+    Use this when the user asks whether monitored services
+    or targets are healthy.
+    """
+
+    try:
+
+        data = prometheus_get(
+            "/api/v1/targets",
+            {
+                "state": "active"
+            }
+        )
+
+        targets = data["data"]["activeTargets"]
+
+        if not targets:
+
+            return "Prometheus currently has no active targets."
+
+        output = []
+
+        for target in targets:
+
+            labels = target.get(
+                "labels",
+                {}
+            )
+
+            health = target.get(
+                "health",
+                "unknown"
+            )
+
+            scrape_url = target.get(
+                "scrapeUrl",
+                ""
+            )
+
+            last_error = target.get(
+                "lastError",
+                ""
+            )
+
+            output.append(
+                {
+                    "job": labels.get(
+                        "job",
+                        "unknown"
+                    ),
+                    "instance": labels.get(
+                        "instance",
+                        "unknown"
+                    ),
+                    "health": health,
+                    "scrape_url": scrape_url,
+                    "last_error": last_error,
+                }
+            )
+
+        return str(output)
+
+    except requests.exceptions.RequestException as e:
+
+        return (
+            "Prometheus connection error while "
+            f"checking targets: {str(e)}"
+        )
+
+    except Exception as e:
+
+        return (
+            "Prometheus target discovery error: "
+            f"{str(e)}"
+        )
+
+
+# ============================================================
+# REGISTER TOOLS
+# ============================================================
+
+tools = [
+    query_prometheus,
+    list_prometheus_metrics,
+    list_prometheus_targets,
+]
+
+
+# ============================================================
+# OLLAMA / QWEN3
+# ============================================================
+
+llm = ChatOllama(
+    model=OLLAMA_MODEL,
+    base_url=OLLAMA_URL,
+    temperature=0,
+)
+
+llm_with_tools = llm.bind_tools(tools)
+
+
+# ============================================================
+# LANGGRAPH STATE
+# ============================================================
+
+class AgentState(TypedDict):
+
+    messages: Annotated[
+        list,
+        add_messages
+    ]
+
+
+# ============================================================
+# AGENT NODE
+# ============================================================
+
+def agent(state: AgentState):
+
+    response = llm_with_tools.invoke(
+        state["messages"]
+    )
+
+    return {
+        "messages": [response]
+    }
+
+
+# ============================================================
+# DECIDE WHETHER TO CALL TOOLS
+# ============================================================
+
+def should_continue(state: AgentState):
+
+    last_message = state["messages"][-1]
+
+    tool_calls = getattr(
+        last_message,
+        "tool_calls",
+        None
+    )
+
+    if tool_calls:
+
+        return "tools"
+
+    return END
+
+
+# ============================================================
+# BUILD LANGGRAPH
+# ============================================================
+
+graph = StateGraph(
+    AgentState
+)
+
+graph.add_node(
+    "agent",
+    agent
+)
+
+graph.add_node(
+    "tools",
+    ToolNode(tools)
+)
+
+graph.add_edge(
+    START,
+    "agent"
+)
+
+graph.add_conditional_edges(
+    "agent",
+    should_continue
+)
+
+graph.add_edge(
+    "tools",
+    "agent"
+)
+
+agent_graph = graph.compile()
+
+
+# ============================================================
+# CONVERSATION MEMORY
+# ============================================================
+
+conversation = [
+    SystemMessage(
+        content=SYSTEM_PROMPT
+    )
+]
+
+
+# ============================================================
+# WEB UI
+# ============================================================
+
+@app.route("/")
+def index():
+
+    return render_template(
+        "index.html"
+    )
+
+
+# ============================================================
+# CHAT API
+# ============================================================
+
+@app.route(
+    "/chat",
+    methods=["POST"]
+)
+def chat():
+
+    global conversation
+
+    try:
+
+        data = request.get_json(
+            silent=True
+        )
+
+        if not data:
+
+            return jsonify({
+                "error": "Invalid JSON request."
+            }), 400
+
+        user_message = data.get(
+            "message",
+            ""
+        ).strip()
+
+        if not user_message:
+
+            return jsonify({
+                "error": "Message is empty."
+            }), 400
+
+        # Add user message
+        conversation.append(
+            HumanMessage(
+                content=user_message
+            )
+        )
+
+        # Run agent
+        result = agent_graph.invoke(
+            {
+                "messages": conversation
+            }
+        )
+
+        # Preserve conversation
+        conversation = result["messages"]
+
+        # Final message
+        final_message = conversation[-1]
+
+        return jsonify({
+            "response": final_message.content
+        })
+
+    except Exception as e:
+
+        print(
+            "\n=============================="
+        )
+
+        print(
+            "AI-SRE ERROR:"
+        )
+
+        print(
+            repr(e)
+        )
+
+        print(
+            "==============================\n"
+        )
+
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+
+# ============================================================
+# CLEAR CONVERSATION
+# ============================================================
+
+@app.route(
+    "/clear",
+    methods=["POST"]
+)
+def clear():
+
+    global conversation
+
+    conversation = [
+        SystemMessage(
+            content=SYSTEM_PROMPT
+        )
+    ]
+
+    return jsonify({
+        "status": "cleared"
+    })
+
+
+# ============================================================
+# HEALTH ENDPOINT
+# ============================================================
+
+@app.route("/health")
+def health():
+
+    return jsonify({
+        "status": "healthy",
+        "agent": "LangGraph",
+        "model": OLLAMA_MODEL,
+        "ollama": OLLAMA_URL,
+        "prometheus": PROMETHEUS_URL,
+        "tools": [
+            "query_prometheus",
+            "list_prometheus_metrics",
+            "list_prometheus_targets",
+        ]
+    })
+
+
+# ============================================================
+# START SERVER
+# ============================================================
+
+if __name__ == "__main__":
+
+    app.run(
+        host="0.0.0.0",
+        port=5001,
+        debug=True
+    )
+######################################################################
