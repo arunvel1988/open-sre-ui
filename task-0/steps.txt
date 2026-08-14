@@ -1,0 +1,35 @@
+sudo apt update -y
+sudo apt install nano lsof git -y
+sudo apt install docker.io -y
+sudo chmod 777 /var/run/docker.sock
+
+docker volume create ollama-data
+
+docker run -d \
+  --name ollama \
+  -p 11434:11434 \
+  -v ollama-data:/root/.ollama \
+  --restart unless-stopped \
+  ollama/ollama
+
+
+  docker exec -it ollama ollama pull qwen3:1.7b
+
+
+  curl -s http://localhost:11434/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3:1.7b",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Explain Kubernetes in one sentence."
+      }
+    ],
+    "think": false,
+    "stream": false
+  }'
+
+
+
+  
